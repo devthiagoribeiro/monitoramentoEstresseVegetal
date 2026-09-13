@@ -6,4 +6,7 @@ urlpatterns = [
     
     # Todas as URLs que começarem com 'api/auth/' serão repassadas para o arquivo users/urls.py
     path('api/auth/', include('users.urls')), 
+
+    # Rotas de Dispositivos e Leituras
+    path('api/devices/', include('devices.urls')),
 ]
