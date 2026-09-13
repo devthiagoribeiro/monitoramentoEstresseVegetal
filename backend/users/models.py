@@ -36,6 +36,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True, verbose_name='E-mail')
     name = models.CharField(max_length=255, verbose_name='Nome')
     phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Telefone')
+    profession = models.CharField(max_length=100, blank=True, null=True, verbose_name='Profissão')
 
     is_active = models.BooleanField(default=True, verbose_name='Ativo')
     is_staff = models.BooleanField(default=False, verbose_name='Equipe')

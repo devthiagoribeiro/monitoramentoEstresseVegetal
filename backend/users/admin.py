@@ -17,7 +17,7 @@ class CustomUserAdmin(UserAdmin):
     # Como o nosso model usa e-mail no lugar de username, remapeamos os campos do formulário do Admin
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Informações Pessoais', {'fields': ('name', 'phone')}),
+        ('Informações Pessoais', {'fields': ('name', 'phone', 'profession')}), # <-- Adicione profession aqui
         ('Permissões', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Datas importantes', {'fields': ('last_login', 'date_joined')}),
     )

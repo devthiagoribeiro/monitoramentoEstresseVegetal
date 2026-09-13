@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'users.apps.UsersConfig',
+    'rest_framework',
+    'devices.apps.DevicesConfig',
 ]
 
 MIDDLEWARE = [
@@ -136,3 +138,15 @@ MAILERS = {
 
 # Configuração do Custom User Model
 AUTH_USER_MODEL = 'users.User'
+
+# Configurações do Django REST Framework
+REST_FRAMEWORK = {
+    # Define como a API vai saber quem é o usuário que está fazendo a requisição
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    # Por padrão, se não especificarmos, apenas usuários autenticados podem acessar a API
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ]
+}
