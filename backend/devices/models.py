@@ -20,10 +20,25 @@ class Farm(models.Model):
     def __str__(self):
         return self.name
 
+class AuthorizedDevice(models.Model):
+    """
+    Lista de dispositivos (estoque) fabricados e autorizados pela empresa.
+    """
+    mac_address = models.CharField(max_length=50, unique=True, verbose_name="MAC Address / ID Físico")
+    is_used = models.BooleanField(default=False, verbose_name="Já está em uso?")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.mac_address
 
 class Sensor(models.Model):
-    # Geralmente os dispositivos físicos são identificados por um MAC Address ou Serial único
-    sensor_id = models.CharField(max_length=50, unique=True, verbose_name='ID/MAC do Sensor')
+    device = models.ForeignKey(
+        AuthorizedDevice,
+        on_delete=models.CASCADE,
+        related_name='instalação',
+        verbose_name='mac_address'
+    )
+    description = models.TextField(verbose_name='Descrição do dispositivo', blank=True, null=True)
     
     # RELACIONAMENTO (1,N): Um sensor pertence a 1 Fazenda.
     farm = models.ForeignKey(
@@ -37,20 +52,14 @@ class Sensor(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Data de Cadastro')
 
     def __str__(self):
-        return f"Sensor {self.sensor_id} ({self.farm.name})"
+        return f"Sensor {self.mac_address} ({self.farm.name})"
 
 
 class Reading(models.Model):
-    # RELACIONAMENTO (1,N): Uma leitura pertence a 1 Sensor.
-    sensor = models.ForeignKey(
-        Sensor, 
-        on_delete=models.CASCADE, 
-        related_name='readings', 
-        verbose_name='Sensor'
-    )
+    # Relacionamos a leitura ao sensor e TAMBÉM guardamos a fazenda onde ela ocorreu
+    sensor = models.ForeignKey(Sensor, on_delete=models.CASCADE, related_name='readings', verbose_name='Sensor')
+    farm = models.ForeignKey(Farm, on_delete=models.CASCADE, related_name='readings', verbose_name='Fazenda')
     
-    # auto_now_add=True salva o momento exato em que a leitura chegou no banco
-    # db_index=True cria um índice de busca. Crucial para o banco achar datas rapidamente no futuro.
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='Data/Hora')
     
     # Variáveis coletadas
@@ -60,4 +69,4 @@ class Reading(models.Model):
     battery = models.FloatField(verbose_name='Bateria (%)')
 
     def __str__(self):
-        return f"{self.sensor.sensor_id} - {self.timestamp.strftime('%d/%m/%Y %H:%M')}"
+        return f"Leitura {self.timestamp} - Sensor {self.sensor.id}"

@@ -8,11 +8,21 @@ class FarmAdmin(admin.ModelAdmin):
 
 @admin.register(Sensor)
 class SensorAdmin(admin.ModelAdmin):
-    list_display = ('sensor_id', 'farm', 'is_active', 'created_at')
+    list_display = ('device', 'farm', 'is_active', 'created_at')
     list_filter = ('is_active', 'farm')
-    search_fields = ('sensor_id',)
+    search_fields = ('instalação',)
 
 @admin.register(Reading)
 class ReadingAdmin(admin.ModelAdmin):
     list_display = ('sensor', 'timestamp', 'dpv_kpa', 'humidity', 'temperature')
     list_filter = ('sensor', 'timestamp')
+
+from .models import Farm, Sensor, Reading, AuthorizedDevice
+
+# ... seus registros anteriores ...
+
+@admin.register(AuthorizedDevice)
+class AuthorizedDeviceAdmin(admin.ModelAdmin):
+    list_display = ('mac_address', 'is_used', 'created_at')
+    search_fields = ('mac_address',)
+    list_filter = ('is_used',)
