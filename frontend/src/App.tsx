@@ -1,99 +1,47 @@
-import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
+import Login from './pages/Login';
+import FarmsList from './pages/FarmsList';
+import FarmDashboard from './pages/FarmDashboard';
 
-// 1. Configurações Globais do Axios
+// Configurações globais
 axios.defaults.withCredentials = true;
-// Definimos a URL base para não precisarmos digitar o endereço completo toda vez
-axios.defaults.baseURL = 'http://localhost:8000'; 
+axios.defaults.baseURL = 'http://127.0.0.1:8000';
+
+// Função auxiliar para ler o cookie do CSRF diretamente do navegador
+function getCookie(name: string) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+// Interceptor: Antes de qualquer requisição sair, pegamos o token e colocamos no cabeçalho
+axios.interceptors.request.use((config) => {
+  const token = getCookie('csrftoken');
+  if (token) {
+    config.headers['X-CSRFToken'] = token;
+  }
+  return config;
+});
 
 export default function App() {
-  // Estados do Formulário
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
-  // Estados da Aplicação
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [farms, setFarms] = useState([]);
-
-  // Função disparada ao clicar no botão "Entrar"
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault(); // Impede o navegador de recarregar a página (comportamento padrão do HTML)
-    setError(''); // Limpa erros anteriores
-
-    try {
-      // 2. Faz o POST para a nossa rota de login no Django
-      await axios.post('/api/auth/login/', {
-        email: email,
-        password: password
-      });
-      
-      // 3. Se a linha acima não der erro, o Django nos deu o Cookie!
-      setIsLoggedIn(true);
-      fetchFarms(); // Agora que temos o cookie, vamos buscar as fazendas
-      
-    } catch (err) {
-      setError('E-mail ou senha incorretos.');
-      console.error(err);
-    }
-  };
-
-  // Função para buscar as fazendas
-  const fetchFarms = async () => {
-    try {
-      const response = await axios.get('/api/devices/farms/');
-      setFarms(response.data);
-    } catch (err) {
-      console.error("Erro ao buscar fazendas:", err);
-    }
-  };
-
-  // 4. RENDERIZAÇÃO CONDICIONAL: Se não estiver logado, mostra a tela de Login
-  if (!isLoggedIn) {
-    return (
-      <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-        <h1>Login - IoT Dashboard</h1>
-        <form onSubmit={handleLogin}>
-          <div style={{ marginBottom: '10px' }}>
-            <label>E-mail: </label>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              required 
-            />
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label>Senha: </label>
-            <input 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              required 
-            />
-          </div>
-          
-          {/* Se houver algum erro, mostra o texto em vermelho */}
-          {error && <p style={{ color: 'red' }}>{error}</p>}
-          
-          <button type="submit">Entrar</button>
-        </form>
-      </div>
-    );
-  }
-
-  // 5. Se estiver logado, mostra o Dashboard
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>Dashboard IoT</h1>
-      <h2>Minhas Fazendas:</h2>
-      <ul>
-        {farms.map((farm: any) => (
-          <li key={farm.id}>
-            <strong>{farm.name}</strong> - Proprietário: {farm.owner_name} - Endereço: {farm.address}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/dashboard" element={<FarmsList />} />
+        <Route path="/dashboard/:farmId" element={<FarmDashboard />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
