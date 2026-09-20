@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: cultiva-api-thiagoribeiro
+    runtime: docker
+    plan: free
+    region: virginia
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: FRONTEND_URL
+        value: https://cultiva-iot-thiagoribeiro.onrender.com
+      - key: CORS_ORIGINS
+        value: https://cultiva-iot-thiagoribeiro.onrender.com
+      - key: EMAIL_BACKEND
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+
+  - type: web
+    name: cultiva-iot-thiagoribeiro
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    autoDeployTrigger: commit
+    envVars:
+      - key: VITE_API_URL
+        value: https://cultiva-api-thiagoribeiro.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

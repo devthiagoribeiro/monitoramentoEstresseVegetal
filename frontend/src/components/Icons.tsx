@@ -74,3 +74,15 @@ export const UserIcon = (props: IconProps) => (
 export const ShieldIcon = (props: IconProps) => (
   <svg {...base(props)}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
 );
+
+export const MailIcon = (props: IconProps) => (
+  <svg {...base(props)}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
+);
+
+export const CheckIcon = (props: IconProps) => (
+  <svg {...base(props)}><path d="m5 12 4 4L19 6" /></svg>
+);
+
+export const KeyIcon = (props: IconProps) => (
+  <svg {...base(props)}><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M15 8l3 3M17 6l3 3" /></svg>
+);
