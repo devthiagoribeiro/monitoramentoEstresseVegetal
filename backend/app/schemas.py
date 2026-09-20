@@ -94,13 +94,10 @@ class SensorCreate(BaseModel):
     mac_address: str = Field(min_length=1, max_length=50)
     farm: int
     description: str | None = None
-    is_active: bool = True
 
 
 class SensorUpdate(BaseModel):
-    farm: int | None = None
     description: str | None = None
-    is_active: bool | None = None
 
 
 class SensorOut(ApiModel):
@@ -129,7 +126,8 @@ class SensorOut(ApiModel):
 
 
 class ReadingCreate(BaseModel):
-    sensor: int
+    mac_address: str
+    timestamp: datetime
     dpv_kpa: float
     humidity: float
     temperature: float
@@ -137,7 +135,6 @@ class ReadingCreate(BaseModel):
 
 
 class ReadingUpdate(BaseModel):
-    sensor: int | None = None
     dpv_kpa: float | None = None
     humidity: float | None = None
     temperature: float | None = None
@@ -147,7 +144,6 @@ class ReadingUpdate(BaseModel):
 class ReadingOut(ApiModel):
     id: int
     sensor: int
-    farm: int
     timestamp: datetime
     dpv_kpa: float
     humidity: float
@@ -161,7 +157,6 @@ class ReadingOut(ApiModel):
             return {
                 "id": value.id,
                 "sensor": value.sensor_id,
-                "farm": value.farm_id,
                 "timestamp": value.timestamp,
                 "dpv_kpa": value.dpv_kpa,
                 "humidity": value.humidity,

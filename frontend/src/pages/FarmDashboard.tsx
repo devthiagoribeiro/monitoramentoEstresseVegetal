@@ -26,7 +26,6 @@ type Sensor = {
 type Reading = {
   id: number;
   sensor: number;
-  farm: number;
   timestamp: string;
   dpv_kpa: number;
   humidity: number;
@@ -81,13 +80,21 @@ export default function FarmDashboard() {
   const [readings, setReadings] = useState<Reading[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSensorModalOpen, setIsSensorModalOpen] = useState(false);
+  const [isDeactivateModalOpen, setIsDeactivateModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeactivating, setIsDeactivating] = useState(false);
   const [sensorError, setSensorError] = useState('');
+  const [deactivateError, setDeactivateError] = useState('');
   const [sensorForm, setSensorForm] = useState({ mac_address: '', description: '' });
 
   const fetchSensors = useCallback(async () => {
     const response = await api.get('/api/devices/sensors/');
-    const farmSensors = response.data.filter((sensor: Sensor) => sensor.farm.toString() === farmId);
+    const farmSensors = response.data
+      .filter((sensor: Sensor) => sensor.farm.toString() === farmId)
+      .sort((first: Sensor, second: Sensor) => {
+        if (first.is_active !== second.is_active) return first.is_active ? -1 : 1;
+        return second.id - first.id;
+      });
     setSensors(farmSensors);
     setSelectedSensorId((current) => {
       const selectionStillExists = farmSensors.some((sensor: Sensor) => sensor.id.toString() === current);
@@ -119,7 +126,7 @@ export default function FarmDashboard() {
     const fetchReadings = async () => {
       const response = await api.get('/api/devices/readings/');
       const sensorReadings = response.data
-        .filter((reading: Reading) => reading.sensor.toString() === selectedSensorId && reading.farm.toString() === farmId)
+        .filter((reading: Reading) => reading.sensor.toString() === selectedSensorId)
         .map((reading: Reading) => ({
           ...reading,
           timeLabel: new Date(reading.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
@@ -131,13 +138,16 @@ export default function FarmDashboard() {
   }, [selectedSensorId, farmId]);
 
   useEffect(() => {
-    if (!isSensorModalOpen) return;
+    if (!isSensorModalOpen && !isDeactivateModalOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsSensorModalOpen(false);
+      if (event.key === 'Escape') {
+        setIsSensorModalOpen(false);
+        setIsDeactivateModalOpen(false);
+      }
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [isSensorModalOpen]);
+  }, [isSensorModalOpen, isDeactivateModalOpen]);
 
   const latestReading = readings.at(-1);
   const selectedSensor = useMemo(
@@ -167,6 +177,22 @@ export default function FarmDashboard() {
     }
   };
 
+  const deactivateSensor = async () => {
+    if (!selectedSensor) return;
+    setDeactivateError('');
+    setIsDeactivating(true);
+    try {
+      await api.post(`/api/devices/sensors/${selectedSensor.id}/deactivate/`);
+      await fetchSensors();
+      setIsDeactivateModalOpen(false);
+    } catch (error: unknown) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      setDeactivateError(typeof detail === 'string' ? detail : 'Não foi possível desativar o sensor. Tente novamente.');
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
   const metrics = [
     { label: 'DPV', value: latestReading ? latestReading.dpv_kpa.toFixed(2) : '—', unit: 'kPa', icon: <ActivityIcon />, color: '#b45309', note: 'Estresse atmosférico' },
     { label: 'Umidade', value: latestReading ? latestReading.humidity.toFixed(0) : '—', unit: '%', icon: <DropletsIcon />, color: '#0369a1', note: 'Umidade relativa' },
@@ -183,16 +209,28 @@ export default function FarmDashboard() {
           <div>
             <div className="flex items-center gap-3">
               <h1>{isLoading ? 'Carregando...' : farm?.name || 'Monitoramento'}</h1>
-              <span className="online-pill"><span className="status-dot" /> Online</span>
             </div>
             <p>{farm?.address || 'Dados ambientais e operacionais da propriedade em tempo real.'}</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {selectedSensor?.is_active && (
+              <button className="danger-button" onClick={() => setIsDeactivateModalOpen(true)}>
+                Desativar sensor
+              </button>
+            )}
+            {selectedSensor && (
+              <span className={`connection-pill ${selectedSensor.is_active ? 'is-connected' : 'is-disconnected'}`}>
+                <span className="status-dot" /> {selectedSensor.is_active ? 'Conectado' : 'Desconectado'}
+              </span>
+            )}
             <label className="sensor-select-label">
               <span>Sensor</span>
               <select value={selectedSensorId} onChange={(event) => setSelectedSensorId(event.target.value)}>
                 {sensors.length === 0 && <option value="">Nenhum sensor conectado</option>}
-                {sensors.map((sensor) => <option key={sensor.id} value={sensor.id}>{sensor.description || sensor.mac_address}</option>)}
+                {sensors.map((sensor) => (
+                  <option key={sensor.id} value={sensor.id}>
+                    {sensor.description || sensor.mac_address}</option>
+                ))}
               </select>
             </label>
             <button className="primary-button" onClick={() => setIsSensorModalOpen(true)}><PlusIcon width={18} height={18} /> Adicionar sensor</button>
@@ -209,15 +247,22 @@ export default function FarmDashboard() {
         </section>
 
         <div className="section-title-row">
-          <div><h2>Histórico ambiental</h2><p>{selectedSensor ? `Leituras de ${selectedSensor.description || selectedSensor.mac_address}` : 'Conecte um sensor para começar a receber dados.'}</p></div>
+          <div>
+            <h2>Histórico ambiental</h2>
+            <p>
+              {selectedSensor
+                ? `Leituras de ${selectedSensor.description || selectedSensor.mac_address}${selectedSensor.is_active ? '' : ' · instalação encerrada'}`
+                : 'Conecte um sensor para começar a receber dados.'}
+            </p>
+          </div>
           {latestReading && <span>Última atualização: {new Date(latestReading.timestamp).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>}
         </div>
 
         {readings.length === 0 ? (
           <section className="empty-state compact">
             <div className="empty-icon"><RadioIcon width={24} height={24} /></div>
-            <h2>{sensors.length === 0 ? 'Nenhum sensor conectado' : 'Aguardando primeiras leituras'}</h2>
-            <p>{sensors.length === 0 ? 'Adicione um dispositivo autorizado para iniciar o monitoramento desta fazenda.' : 'O sensor está conectado, mas ainda não enviou dados ambientais.'}</p>
+            <h2>{sensors.length === 0 ? 'Nenhum sensor conectado' : selectedSensor?.is_active ? 'Aguardando primeiras leituras' : 'Sensor desconectado sem leituras'}</h2>
+            <p>{sensors.length === 0 ? 'Adicione um dispositivo autorizado para iniciar o monitoramento desta fazenda.' : selectedSensor?.is_active ? 'O sensor está conectado, mas ainda não enviou dados ambientais.' : 'Esta instalação foi encerrada e não recebeu leituras durante o período em que esteve ativa.'}</p>
             {sensors.length === 0 && <button className="secondary-button" onClick={() => setIsSensorModalOpen(true)}><PlusIcon width={17} height={17} /> Adicionar sensor</button>}
           </section>
         ) : (
@@ -253,6 +298,36 @@ export default function FarmDashboard() {
                 <button type="submit" className="primary-button" disabled={isSaving}>{isSaving ? <><span className="spinner" /> Conectando...</> : 'Conectar sensor'}</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {isDeactivateModalOpen && selectedSensor && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setIsDeactivateModalOpen(false)}>
+          <section className="modal-panel max-w-[500px]" role="dialog" aria-modal="true" aria-labelledby="deactivate-modal-title">
+            <div className="modal-header">
+              <div><p className="eyebrow eyebrow-danger">Encerrar instalação</p><h2 id="deactivate-modal-title">Desativar sensor?</h2></div>
+              <button className="icon-button" onClick={() => setIsDeactivateModalOpen(false)} aria-label="Fechar"><CloseIcon width={19} height={19} /></button>
+            </div>
+            <div className="space-y-5 p-6 sm:p-7">
+              <div className="deactivate-summary">
+                <RadioIcon width={21} height={21} />
+                <div>
+                  <strong>{selectedSensor.description || selectedSensor.mac_address}</strong>
+                  <span>{selectedSensor.mac_address}</span>
+                </div>
+              </div>
+              <p className="text-sm leading-6 text-stone-600">
+                O sensor será marcado como desconectado e poderá ser usado em outra fazenda. Esta instalação e todo o histórico de leituras permanecerão disponíveis.
+              </p>
+              {deactivateError && <div className="form-error" role="alert">{deactivateError}</div>}
+              <div className="modal-actions">
+                <button type="button" className="ghost-button" onClick={() => setIsDeactivateModalOpen(false)}>Cancelar</button>
+                <button type="button" className="danger-button danger-button-solid" onClick={deactivateSensor} disabled={isDeactivating}>
+                  {isDeactivating ? <><span className="spinner" /> Desativando...</> : 'Confirmar desativação'}
+                </button>
+              </div>
+            </div>
           </section>
         </div>
       )}

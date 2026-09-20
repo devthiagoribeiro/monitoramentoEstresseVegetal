@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '../components/AppShell';
-import { ArrowRightIcon, CloseIcon, LeafIcon, MapPinIcon, PlusIcon, RadioIcon } from '../components/Icons';
+import { ArrowRightIcon, CloseIcon, LeafIcon, MapPinIcon, PlusIcon, RadioIcon, TrashIcon } from '../components/Icons';
 import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,8 +29,11 @@ export default function FarmsList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [farmToDelete, setFarmToDelete] = useState<Farm | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState(emptyForm);
   const [error, setError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const navigate = useNavigate();
 
   const fetchData = async () => {
@@ -49,13 +52,16 @@ export default function FarmsList() {
   useEffect(() => { void fetchData(); }, []);
 
   useEffect(() => {
-    if (!isModalOpen) return;
+    if (!isModalOpen && !farmToDelete) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsModalOpen(false);
+      if (event.key === 'Escape') {
+        setIsModalOpen(false);
+        setFarmToDelete(null);
+      }
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [isModalOpen]);
+  }, [isModalOpen, farmToDelete]);
 
   const activeSensors = useMemo(() => sensors.filter((sensor) => sensor.is_active).length, [sensors]);
 
@@ -84,6 +90,21 @@ export default function FarmsList() {
     }
   };
 
+  const handleDeleteFarm = async () => {
+    if (!farmToDelete) return;
+    setDeleteError('');
+    setIsDeleting(true);
+    try {
+      await api.delete(`/api/devices/farms/${farmToDelete.id}/`);
+      setFarmToDelete(null);
+      await fetchData();
+    } catch {
+      setDeleteError('Não foi possível remover a fazenda. Tente novamente.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <AppShell>
       <main className="app-container max-w-6xl py-8 sm:py-12">
@@ -98,11 +119,10 @@ export default function FarmsList() {
           </button>
         </section>
 
-        <section className="summary-strip" aria-label="Resumo da operação">
+        <section className="summary-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }} aria-label="Resumo da operação">
           <div><span>Fazendas conectadas</span><strong>{farms.length}</strong></div>
-          <div><span>Sensores em campo</span><strong>{sensors.length}</strong></div>
+          <div><span>Instalações registradas</span><strong>{sensors.length}</strong></div>
           <div><span>Sensores ativos</span><strong className="text-emerald-700">{activeSensors}</strong></div>
-          <div className="summary-status"><span className="status-dot" /><p><strong>Operação online</strong><small>Dados protegidos e atualizados</small></p></div>
         </section>
 
         {isLoading ? (
@@ -122,16 +142,28 @@ export default function FarmsList() {
           <section className="farm-grid" aria-label="Lista de fazendas">
             {farms.map((farm, index) => {
               const farmSensors = sensors.filter((sensor) => sensor.farm === farm.id);
+              const activeFarmSensors = farmSensors.filter((sensor) => sensor.is_active);
               return (
-                <button
+                <article
                   key={farm.id}
                   className="farm-card"
                   style={{ '--card-index': index } as React.CSSProperties}
-                  onClick={() => navigate(`/dashboard/${farm.id}`)}
                 >
                   <div className="flex items-start justify-between gap-5">
                     <div className="farm-symbol"><LeafIcon width={21} height={21} /></div>
-                    <span className="online-pill"><span className="status-dot" /> Monitorada</span>
+                    <div className="farm-card-actions">
+                      <span className={`online-pill ${activeFarmSensors.length === 0 ? 'is-offline' : ''}`}>
+                        <span className="status-dot" /> {activeFarmSensors.length > 0 ? 'Monitorada' : 'Sem sensor ativo'}
+                      </span>
+                      <button
+                        className="farm-remove-button"
+                        onClick={() => { setDeleteError(''); setFarmToDelete(farm); }}
+                        aria-label={`Remover ${farm.name}`}
+                        title="Remover fazenda"
+                      >
+                        <TrashIcon width={16} height={16} />
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-8 text-left">
                     <h2>{farm.name}</h2>
@@ -142,10 +174,12 @@ export default function FarmsList() {
                     </div>
                   </div>
                   <div className="farm-card-footer">
-                    <span><RadioIcon width={16} height={16} /> {farmSensors.length} {farmSensors.length === 1 ? 'sensor' : 'sensores'}</span>
-                    <span className="card-link">Abrir painel <ArrowRightIcon width={16} height={16} /></span>
+                    <span><RadioIcon width={16} height={16} /> {activeFarmSensors.length} ativos · {farmSensors.length} instalações</span>
+                    <button className="card-link" onClick={() => navigate(`/dashboard/${farm.id}`)}>
+                      Abrir painel <ArrowRightIcon width={16} height={16} />
+                    </button>
                   </div>
-                </button>
+                </article>
               );
             })}
           </section>
@@ -198,6 +232,33 @@ export default function FarmsList() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {farmToDelete && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setFarmToDelete(null)}>
+          <section className="modal-panel max-w-[500px]" role="dialog" aria-modal="true" aria-labelledby="delete-farm-title">
+            <div className="modal-header">
+              <div><p className="eyebrow eyebrow-danger">Ação permanente</p><h2 id="delete-farm-title">Remover fazenda?</h2></div>
+              <button className="icon-button" onClick={() => setFarmToDelete(null)} aria-label="Fechar"><CloseIcon width={19} height={19} /></button>
+            </div>
+            <div className="space-y-5 p-6 sm:p-7">
+              <div className="deactivate-summary">
+                <LeafIcon width={21} height={21} />
+                <div><strong>{farmToDelete.name}</strong><span>{farmToDelete.owner_name}</span></div>
+              </div>
+              <p className="text-sm leading-6 text-stone-600">
+                Esta ação remove permanentemente a fazenda, suas instalações de sensores e todo o histórico de leituras associado. Dispositivos ativos serão liberados para uso em outra fazenda.
+              </p>
+              {deleteError && <div className="form-error" role="alert">{deleteError}</div>}
+              <div className="modal-actions">
+                <button type="button" className="ghost-button" onClick={() => setFarmToDelete(null)}>Cancelar</button>
+                <button type="button" className="danger-button danger-button-solid" onClick={handleDeleteFarm} disabled={isDeleting}>
+                  {isDeleting ? <><span className="spinner" /> Removendo...</> : 'Remover permanentemente'}
+                </button>
+              </div>
+            </div>
           </section>
         </div>
       )}

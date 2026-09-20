@@ -45,7 +45,6 @@ class Farm(Base):
 
     manager: Mapped[User] = relationship(back_populates="farms")
     sensors: Mapped[list["Sensor"]] = relationship(back_populates="farm", cascade="all, delete-orphan")
-    readings: Mapped[list["Reading"]] = relationship(back_populates="farm", cascade="all, delete-orphan")
 
 
 class AuthorizedDevice(Base):
@@ -56,7 +55,7 @@ class AuthorizedDevice(Base):
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    installation: Mapped["Sensor | None"] = relationship(back_populates="device", uselist=False)
+    installations: Mapped[list["Sensor"]] = relationship(back_populates="device")
 
 
 class Sensor(Base):
@@ -67,10 +66,10 @@ class Sensor(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     farm_id: Mapped[int] = mapped_column(ForeignKey("devices_farm.id"), index=True)
-    device_id: Mapped[int] = mapped_column(ForeignKey("devices_authorizeddevice.id"), unique=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices_authorizeddevice.id"), index=True)
 
     farm: Mapped[Farm] = relationship(back_populates="sensors")
-    device: Mapped[AuthorizedDevice] = relationship(back_populates="installation")
+    device: Mapped[AuthorizedDevice] = relationship(back_populates="installations")
     readings: Mapped[list["Reading"]] = relationship(back_populates="sensor", cascade="all, delete-orphan")
 
 
@@ -84,8 +83,5 @@ class Reading(Base):
     temperature: Mapped[float] = mapped_column(Float)
     battery: Mapped[float] = mapped_column(Float)
     sensor_id: Mapped[int] = mapped_column(ForeignKey("devices_sensor.id"), index=True)
-    farm_id: Mapped[int] = mapped_column(ForeignKey("devices_farm.id"), index=True)
 
     sensor: Mapped[Sensor] = relationship(back_populates="readings")
-    farm: Mapped[Farm] = relationship(back_populates="readings")
-

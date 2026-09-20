@@ -18,7 +18,13 @@ from app.schemas import (
 
 
 router = APIRouter(prefix="/api/devices", tags=["dispositivos"])
+ingestion_router = APIRouter(prefix="/api/sensor", tags=["ingestão de dados"])
 
+def sensor_from_mac(db: DbSession, mac_add: str) -> Sensor:
+    sensor = db.scalar(select(Sensor).join(Sensor.device).where(func.lower(AuthorizedDevice.mac_address) == mac_add.strip().lower()).where(Sensor.is_active == True))
+    if sensor is None:
+        raise HTTPException(status_code=404, detail="O sensor não está instalado")
+    return sensor
 
 def owned_farm(db: DbSession, farm_id: int, user_id: int) -> Farm:
     farm = db.scalar(select(Farm).where(Farm.id == farm_id, Farm.manager_id == user_id))
@@ -27,13 +33,17 @@ def owned_farm(db: DbSession, farm_id: int, user_id: int) -> Farm:
     return farm
 
 
-def owned_sensor(db: DbSession, sensor_id: int, user_id: int) -> Sensor:
-    sensor = db.scalar(
+def owned_sensor(db: DbSession, sensor_id: int, user_id: int, *, lock: bool = False) -> Sensor:
+    statement = (
         select(Sensor)
-        .options(joinedload(Sensor.device))
         .join(Sensor.farm)
         .where(Sensor.id == sensor_id, Farm.manager_id == user_id)
     )
+    if lock:
+        statement = statement.with_for_update()
+    else:
+        statement = statement.options(joinedload(Sensor.device))
+    sensor = db.scalar(statement)
     if sensor is None:
         raise HTTPException(status_code=404, detail="Sensor não encontrado.")
     return sensor
@@ -42,7 +52,8 @@ def owned_sensor(db: DbSession, sensor_id: int, user_id: int) -> Sensor:
 def owned_reading(db: DbSession, reading_id: int, user_id: int) -> Reading:
     reading = db.scalar(
         select(Reading)
-        .join(Reading.farm)
+        .join(Reading.sensor)
+        .join(Sensor.farm)
         .where(Reading.id == reading_id, Farm.manager_id == user_id)
     )
     if reading is None:
@@ -86,7 +97,8 @@ def update_farm(
 def delete_farm(farm_id: int, db: DbSession, current_user: CurrentUser) -> Response:
     farm = owned_farm(db, farm_id, current_user.id)
     for sensor in farm.sensors:
-        sensor.device.is_used = False
+        if sensor.is_active:
+            sensor.device.is_used = False
     db.delete(farm)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -126,7 +138,7 @@ def create_sensor(payload: SensorCreate, db: DbSession, current_user: CurrentUse
         device=device,
         farm_id=payload.farm,
         description=payload.description,
-        is_active=payload.is_active,
+        is_active=True,
     )
     device.is_used = True
     db.add(sensor)
@@ -145,42 +157,64 @@ def update_sensor(
     sensor_id: int, payload: SensorUpdate, db: DbSession, current_user: CurrentUser
 ) -> Sensor:
     sensor = owned_sensor(db, sensor_id, current_user.id)
-    data = payload.model_dump(exclude_unset=True)
-    if "farm" in data:
-        owned_farm(db, data["farm"], current_user.id)
-        sensor.farm_id = data.pop("farm")
-    for key, value in data.items():
+    for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(sensor, key, value)
     db.commit()
     db.refresh(sensor)
     return sensor
 
 
-@router.delete("/sensors/{sensor_id}/", status_code=status.HTTP_204_NO_CONTENT)
-def delete_sensor(sensor_id: int, db: DbSession, current_user: CurrentUser) -> Response:
-    sensor = owned_sensor(db, sensor_id, current_user.id)
-    sensor.device.is_used = False
-    db.delete(sensor)
+@router.post("/sensors/{sensor_id}/deactivate/", response_model=SensorOut)
+def deactivate_sensor(sensor_id: int, db: DbSession, current_user: CurrentUser) -> Sensor:
+    sensor = owned_sensor(db, sensor_id, current_user.id, lock=True)
+    if not sensor.is_active:
+        return sensor
+
+    device = db.scalar(
+        select(AuthorizedDevice)
+        .where(AuthorizedDevice.id == sensor.device_id)
+        .with_for_update()
+    )
+    sensor.is_active = False
+    if device is not None:
+        device.is_used = False
     db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    db.refresh(sensor)
+    return sensor
+
+
+@router.delete("/sensors/{sensor_id}/")
+def delete_sensor(sensor_id: int, db: DbSession, current_user: CurrentUser) -> None:
+    owned_sensor(db, sensor_id, current_user.id)
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Sensores não podem ser excluídos. Use a desativação para preservar o histórico.",
+    )
 
 
 @router.get("/readings/", response_model=list[ReadingOut])
 def list_readings(db: DbSession, current_user: CurrentUser) -> list[Reading]:
     statement = (
         select(Reading)
-        .join(Reading.farm)
+        .join(Reading.sensor)
+        .join(Sensor.farm)
         .where(Farm.manager_id == current_user.id)
         .order_by(Reading.timestamp.desc())
     )
     return list(db.scalars(statement))
 
 
-@router.post("/readings/", response_model=ReadingOut, status_code=status.HTTP_201_CREATED)
-def create_reading(payload: ReadingCreate, db: DbSession, current_user: CurrentUser) -> Reading:
-    sensor = owned_sensor(db, payload.sensor, current_user.id)
-    values = payload.model_dump(exclude={"sensor"})
-    reading = Reading(**values, sensor_id=sensor.id, farm_id=sensor.farm_id)
+@ingestion_router.post("/readings/", response_model=ReadingOut, status_code=status.HTTP_201_CREATED)
+def create_reading(payload: ReadingCreate, db: DbSession) -> Reading:
+    sensor = sensor_from_mac(db, payload.mac_address)
+    reading = Reading(
+        timestamp = payload.timestamp,
+        dpv_kpa = payload.dpv_kpa,
+        humidity = payload.humidity,
+        temperature = payload.temperature,
+        battery = payload.battery,
+        sensor_id = sensor.id
+    )
     db.add(reading)
     db.commit()
     db.refresh(reading)
@@ -197,12 +231,7 @@ def update_reading(
     reading_id: int, payload: ReadingUpdate, db: DbSession, current_user: CurrentUser
 ) -> Reading:
     reading = owned_reading(db, reading_id, current_user.id)
-    data = payload.model_dump(exclude_unset=True)
-    if "sensor" in data:
-        sensor = owned_sensor(db, data.pop("sensor"), current_user.id)
-        reading.sensor_id = sensor.id
-        reading.farm_id = sensor.farm_id
-    for key, value in data.items():
+    for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(reading, key, value)
     db.commit()
     db.refresh(reading)

@@ -10,10 +10,19 @@ continuam disponíveis sem uma migração destrutiva.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
 A documentação OpenAPI fica em `http://127.0.0.1:8000/docs`.
+
+As migrações Alembic são executadas automaticamente pelo container. Em execução
+local, rode `alembic upgrade head` antes de iniciar a API.
+
+Ao desativar um sensor, a instalação em `devices_sensor` e suas leituras são
+preservadas. Apenas `is_active` passa para `false` e o dispositivo autorizado é
+liberado (`is_used=false`) para uma nova instalação. A fazenda de cada leitura é
+obtida pelo relacionamento `reading -> sensor -> farm`.
 
 O cadastro público está disponível em `POST /api/auth/register/`. Após criar a
 conta, a API devolve o JWT e os dados do usuário, permitindo que o frontend

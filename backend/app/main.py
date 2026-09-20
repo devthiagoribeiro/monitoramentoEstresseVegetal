@@ -7,6 +7,7 @@ from app import models  # noqa: F401
 from app.config import get_settings
 from app.database import Base, engine
 from app.routers import auth, devices
+from app.routers.devices import ingestion_router
 
 
 @asynccontextmanager
@@ -31,6 +32,7 @@ app.add_middleware(
 )
 app.include_router(auth.router)
 app.include_router(devices.router)
+app.include_router(ingestion_router)
 
 
 @app.get("/health", tags=["infraestrutura"])

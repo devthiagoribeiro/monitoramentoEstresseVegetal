@@ -63,6 +63,10 @@ export const CloseIcon = (props: IconProps) => (
   <svg {...base(props)}><path d="m6 6 12 12M18 6 6 18" /></svg>
 );
 
+export const TrashIcon = (props: IconProps) => (
+  <svg {...base(props)}><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 10v6M14 10v6" /></svg>
+);
+
 export const UserIcon = (props: IconProps) => (
   <svg {...base(props)}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
 );
@@ -70,4 +74,3 @@ export const UserIcon = (props: IconProps) => (
 export const ShieldIcon = (props: IconProps) => (
   <svg {...base(props)}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
 );
-

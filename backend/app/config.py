@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "Monitoramento de Estresse Vegetal"
     debug: bool = False
     jwt_secret_key: str = Field(
-        default="change-me-in-production",
+        default="vgEtOpX-bUw61_k9GsffcIc1sWi8eCTKNLJO306-Taw",
         validation_alias=AliasChoices("JWT_SECRET_KEY", "SECRET_KEY"),
     )
     jwt_algorithm: str = "HS256"
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     db_user: str = "postgres"
     db_password: str = "postgres"
     db_host: str = "localhost"
-    db_port: int = 5432
+    db_port: int = 5430
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     model_config = SettingsConfigDict(
