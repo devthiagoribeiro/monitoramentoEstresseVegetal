@@ -14,13 +14,27 @@ class Settings(BaseSettings):
     )
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    email_verification_expire_hours: int = 24
+    password_reset_expire_minutes: int = 30
+    frontend_url: str = "http://localhost:5173"
+    email_backend: str = "console"
+    email_from_address: str = "Cultiva <nao-responda@cultiva.local>"
+    brevo_api_key: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
     database_url_value: str | None = Field(default=None, alias="DATABASE_URL")
     db_name: str = "monitoramento"
     db_user: str = "postgres"
     db_password: str = "postgres"
     db_host: str = "localhost"
     db_port: int = 5430
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins_value: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173",
+        alias="CORS_ORIGINS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
@@ -43,8 +57,15 @@ class Settings(BaseSettings):
             f"{self.db_host}:{self.db_port}/{self.db_name}"
         )
 
+    @property
+    def public_frontend_url(self) -> str:
+        return self.frontend_url.rstrip("/")
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [origin.strip().rstrip("/") for origin in self.cors_origins_value.split(",") if origin.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

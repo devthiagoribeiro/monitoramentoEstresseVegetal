@@ -25,12 +25,23 @@ liberado (`is_used=false`) para uma nova instalação. A fazenda de cada leitura
 obtida pelo relacionamento `reading -> sensor -> farm`.
 
 O cadastro público está disponível em `POST /api/auth/register/`. Após criar a
-conta, a API devolve o JWT e os dados do usuário, permitindo que o frontend
-inicie a sessão automaticamente.
+conta, a API envia um link de confirmação e bloqueia o login até o endereço ser
+validado. Os endpoints `POST /api/auth/forgot-password/` e
+`POST /api/auth/reset-password/` implementam a recuperação de senha. O token é
+temporário e deixa de valer após a primeira alteração da senha.
 
 Variáveis aceitas: `DATABASE_URL` ou `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`
 e `DB_PORT`. Defina também um `JWT_SECRET_KEY` longo e aleatório. Por compatibilidade,
 `SECRET_KEY` também é aceito.
+
+Em desenvolvimento, `EMAIL_BACKEND=console` imprime os links no terminal do
+backend. Para envio real, use `EMAIL_BACKEND=smtp` e configure `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_USE_TLS` e
+`EMAIL_FROM_ADDRESS`. `FRONTEND_URL` define a origem usada nos links enviados.
+Em hospedagens que bloqueiam portas SMTP, use `EMAIL_BACKEND=brevo` com
+`BREVO_API_KEY` e um `EMAIL_FROM_ADDRESS` confirmado na Brevo.
+
+O passo a passo da implantação gratuita está em [`DEPLOY.md`](../DEPLOY.md).
 
 Para criar o primeiro usuário em um banco novo:
 

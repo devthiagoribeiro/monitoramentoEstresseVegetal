@@ -6,6 +6,7 @@ export type SessionUser = {
   name: string;
   phone?: string | null;
   profession?: string | null;
+  email_verified: boolean;
 };
 
 export const api = axios.create({
@@ -48,4 +49,3 @@ export function getStoredUser(): SessionUser | null {
     return null;
   }
 }
-

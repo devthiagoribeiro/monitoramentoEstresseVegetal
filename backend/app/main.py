@@ -2,10 +2,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app import models  # noqa: F401
 from app.config import get_settings
 from app.database import Base, engine
+from app.dependencies import DbSession
 from app.routers import auth, devices
 from app.routers.devices import ingestion_router
 
@@ -35,7 +37,13 @@ app.include_router(devices.router)
 app.include_router(ingestion_router)
 
 
-@app.get("/health", tags=["infraestrutura"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["infraestrutura"])
+@app.api_route("/health/", methods=["GET", "HEAD"], include_in_schema=False)
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
+@app.get("/health/ready", tags=["infraestrutura"])
+def readiness(db: DbSession) -> dict[str, str]:
+    db.execute(text("SELECT 1"))
+    return {"status": "ready"}

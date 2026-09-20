@@ -19,6 +19,7 @@ def create_user(email: str, name: str, password: str, staff: bool) -> None:
                 email=normalized_email,
                 name=name,
                 password=hash_password(password),
+                email_verified=True,
                 is_staff=staff,
                 is_superuser=staff,
             )

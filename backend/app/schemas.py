@@ -42,12 +42,30 @@ class UserOut(ApiModel):
     name: str
     phone: str | None = None
     profession: str | None = None
+    email_verified: bool
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+
+
+class MessageOut(BaseModel):
+    detail: str
+
+
+class EmailRequest(BaseModel):
+    email: EmailStr
+
+
+class TokenRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 class FarmBase(BaseModel):

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-import { ActivityIcon, LeafIcon, RadioIcon, ShieldIcon } from '../components/Icons';
+import { ActivityIcon, CheckIcon, LeafIcon, MailIcon, RadioIcon, ShieldIcon } from '../components/Icons';
 import { api, saveSession } from '../lib/api';
 
 type AuthMode = 'login' | 'register';
@@ -15,6 +15,8 @@ export default function Login({ mode }: { mode: AuthMode }) {
   const [phone, setPhone] = useState('');
   const [profession, setProfession] = useState('');
   const [error, setError] = useState('');
+  const [registrationSent, setRegistrationSent] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -34,8 +36,12 @@ export default function Login({ mode }: { mode: AuthMode }) {
         ? { name, email, password, phone: phone || null, profession: profession || null }
         : { email, password };
       const response = await api.post(endpoint, payload);
-      saveSession(response.data.access_token, response.data.user);
-      navigate('/dashboard');
+      if (isRegister) {
+        setRegistrationSent(true);
+      } else {
+        saveSession(response.data.access_token, response.data.user);
+        navigate('/dashboard');
+      }
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         const detail = err.response?.data?.detail;
@@ -43,6 +49,20 @@ export default function Login({ mode }: { mode: AuthMode }) {
       } else {
         setError('Não foi possível concluir. Tente novamente.');
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setError('');
+    setResendMessage('');
+    try {
+      setIsSubmitting(true);
+      const response = await api.post('/api/auth/resend-verification/', { email });
+      setResendMessage(response.data.detail);
+    } catch {
+      setError('Não foi possível solicitar um novo link. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -80,6 +100,23 @@ export default function Login({ mode }: { mode: AuthMode }) {
 
       <section className="auth-form-side">
         <div className="w-full max-w-[440px]">
+          {registrationSent ? (
+            <div className="registration-success" role="status">
+              <span className="account-action-icon is-success"><CheckIcon /></span>
+              <p className="eyebrow mt-6">Cadastro concluído</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-900">Confirme seu e-mail</h2>
+              <p className="mt-3 text-sm leading-6 text-stone-500">
+                Enviamos um link de confirmação para <strong className="text-stone-700">{email}</strong>. Você poderá entrar assim que validar o endereço.
+              </p>
+              <div className="verification-note"><MailIcon /><span>O link de confirmação expira em 24 horas.</span></div>
+              {resendMessage && <div className="form-success">{resendMessage}</div>}
+              {error && <div className="form-error" role="alert">{error}</div>}
+              <Link className="primary-button mt-6 w-full" to="/">Ir para o login</Link>
+              <button className="ghost-button mt-2 w-full" type="button" onClick={handleResend} disabled={isSubmitting}>
+                {isSubmitting ? 'Enviando...' : 'Reenviar e-mail de confirmação'}
+              </button>
+            </div>
+          ) : <>
           <div className="mb-9">
             <p className="eyebrow">{isRegister ? 'Comece agora' : 'Área do produtor'}</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-stone-900">
@@ -117,7 +154,7 @@ export default function Login({ mode }: { mode: AuthMode }) {
             )}
 
             <div className="field-group">
-              <label htmlFor="password">Senha</label>
+              <label htmlFor="password">Senha {!isRegister && <Link className="field-label-link" to="/esqueci-senha">Esqueci minha senha</Link>}</label>
               <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={isRegister ? 'Mínimo de 8 caracteres' : 'Sua senha'} minLength={isRegister ? 8 : 1} required autoComplete={isRegister ? 'new-password' : 'current-password'} />
             </div>
 
@@ -147,6 +184,7 @@ export default function Login({ mode }: { mode: AuthMode }) {
               <ShieldIcon width={14} height={14} /> Seus dados são protegidos por autenticação segura.
             </div>
           )}
+          </>}
         </div>
       </section>
     </main>
