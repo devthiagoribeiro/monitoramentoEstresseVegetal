@@ -1,200 +1,206 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useEffect, useMemo, useState } from 'react';
+import AppShell from '../components/AppShell';
+import { ArrowRightIcon, CloseIcon, LeafIcon, MapPinIcon, PlusIcon, RadioIcon } from '../components/Icons';
+import { api } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 
+type Farm = {
+  id: number;
+  name: string;
+  address?: string | null;
+  owner_name: string;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+};
+
+type Sensor = { id: number; farm: number; is_active: boolean };
+
+const emptyForm = {
+  name: '',
+  address: '',
+  owner_name: '',
+  contact_phone: '',
+  contact_email: '',
+};
+
 export default function FarmsList() {
-  const [farms, setFarms] = useState([]);
+  const [farms, setFarms] = useState<Farm[]>([]);
+  const [sensors, setSensors] = useState<Sensor[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // Estados para todos os campos do modelo de Fazenda
-  const [formData, setFormData] = useState({
-    name: '',
-    address: '',
-    owner_name: '',
-    contact_phone: '',
-    contact_email: ''
-  });
-  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState(emptyForm);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const fetchFarms = async () => {
+  const fetchData = async () => {
     try {
-      const response = await axios.get('/api/devices/farms/');
-      setFarms(response.data);
-    } catch (err: any) {
-      if (err.response?.status === 403) navigate('/');
+      const [farmsResponse, sensorsResponse] = await Promise.all([
+        api.get('/api/devices/farms/'),
+        api.get('/api/devices/sensors/'),
+      ]);
+      setFarms(farmsResponse.data);
+      setSensors(sensorsResponse.data);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchFarms();
-  }, [navigate]);
+  useEffect(() => { void fetchData(); }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isModalOpen]);
+
+  const activeSensors = useMemo(() => sensors.filter((sensor) => sensor.is_active).length, [sensors]);
+
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setFormData((current) => ({ ...current, [event.target.name]: event.target.value }));
   };
 
-  const handleCreateFarm = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateFarm = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-
+    setIsSaving(true);
     try {
-      // Envia todos os dados preenchidos para a API
-      await axios.post('/api/devices/farms/', formData);
-      
-      // Limpa o formulário e fecha o modal
-      setFormData({ name: '', address: '', owner_name: '', contact_phone: '', contact_email: '' });
+      await api.post('/api/devices/farms/', {
+        ...formData,
+        address: formData.address || null,
+        contact_phone: formData.contact_phone || null,
+        contact_email: formData.contact_email || null,
+      });
+      setFormData(emptyForm);
       setIsModalOpen(false);
-      fetchFarms(); 
-    } catch (err: any) {
-      setError('Erro ao cadastrar a fazenda. Verifique os campos.');
-      console.error(err.response?.data || err);
+      await fetchData();
+    } catch {
+      setError('Não foi possível cadastrar. Revise os campos informados.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-4xl mx-auto">
-        
-        {/* Cabeçalho */}
-        <div className="flex justify-between items-center mb-8">
+    <AppShell>
+      <main className="app-container max-w-6xl py-8 sm:py-12">
+        <section className="page-heading">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Minhas Fazendas</h1>
-            <p className="text-gray-500 text-sm mt-1">Selecione uma fazenda para visualizar o monitoramento</p>
+            <p className="eyebrow">Visão geral</p>
+            <h1>Suas fazendas</h1>
+            <p>Acompanhe a saúde das lavouras e acesse os sensores de cada propriedade.</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold shadow transition duration-200 flex items-center gap-2"
-          >
-            <span>+</span> Adicionar Fazenda
+          <button className="primary-button" onClick={() => setIsModalOpen(true)}>
+            <PlusIcon width={18} height={18} /> Nova fazenda
           </button>
-        </div>
+        </section>
 
-        {/* Lista de Fazendas */}
-        {farms.length === 0 ? (
-          <div className="bg-white p-10 text-center rounded-xl shadow-sm border border-gray-200">
-            <p className="text-gray-500 mb-4">Você ainda não possui nenhuma fazenda cadastrada.</p>
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="text-blue-600 font-semibold hover:underline"
-            >
-              Clique aqui para cadastrar a primeira fazenda
-            </button>
+        <section className="summary-strip" aria-label="Resumo da operação">
+          <div><span>Fazendas conectadas</span><strong>{farms.length}</strong></div>
+          <div><span>Sensores em campo</span><strong>{sensors.length}</strong></div>
+          <div><span>Sensores ativos</span><strong className="text-emerald-700">{activeSensors}</strong></div>
+          <div className="summary-status"><span className="status-dot" /><p><strong>Operação online</strong><small>Dados protegidos e atualizados</small></p></div>
+        </section>
+
+        {isLoading ? (
+          <div className="farm-grid" aria-label="Carregando fazendas">
+            {[1, 2].map((item) => <div key={item} className="farm-card skeleton-card" />)}
           </div>
+        ) : farms.length === 0 ? (
+          <section className="empty-state">
+            <div className="empty-icon"><LeafIcon width={25} height={25} /></div>
+            <h2>Comece pela sua primeira fazenda</h2>
+            <p>Organize sensores e leituras por propriedade para ter uma visão clara da sua operação.</p>
+            <button className="secondary-button" onClick={() => setIsModalOpen(true)}>
+              <PlusIcon width={17} height={17} /> Cadastrar fazenda
+            </button>
+          </section>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {farms.map((farm: any) => (
-              <div 
-                key={farm.id} 
-                onClick={() => navigate(`/dashboard/${farm.id}`)}
-                className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md hover:border-blue-400 cursor-pointer transition transform hover:-translate-y-1"
-              >
-                <h2 className="text-xl font-bold text-blue-600">{farm.name}</h2>
-                <p className="text-gray-600 mt-2 text-sm">Proprietário: {farm.owner_name}</p>
-                {farm.address && <p className="text-gray-400 text-xs mt-1">📍 {farm.address}</p>}
-                <div className="mt-4 text-sm text-blue-500 font-semibold flex items-center justify-end">
-                  Acessar Dashboard &rarr;
+          <section className="farm-grid" aria-label="Lista de fazendas">
+            {farms.map((farm, index) => {
+              const farmSensors = sensors.filter((sensor) => sensor.farm === farm.id);
+              return (
+                <button
+                  key={farm.id}
+                  className="farm-card"
+                  style={{ '--card-index': index } as React.CSSProperties}
+                  onClick={() => navigate(`/dashboard/${farm.id}`)}
+                >
+                  <div className="flex items-start justify-between gap-5">
+                    <div className="farm-symbol"><LeafIcon width={21} height={21} /></div>
+                    <span className="online-pill"><span className="status-dot" /> Monitorada</span>
+                  </div>
+                  <div className="mt-8 text-left">
+                    <h2>{farm.name}</h2>
+                    <p className="mt-1 text-sm text-stone-500">Responsável: {farm.owner_name}</p>
+                    <div className="mt-4 flex min-h-5 items-center gap-2 text-xs text-stone-500">
+                      <MapPinIcon width={15} height={15} />
+                      <span className="line-clamp-1">{farm.address || 'Localização não informada'}</span>
+                    </div>
+                  </div>
+                  <div className="farm-card-footer">
+                    <span><RadioIcon width={16} height={16} /> {farmSensors.length} {farmSensors.length === 1 ? 'sensor' : 'sensores'}</span>
+                    <span className="card-link">Abrir painel <ArrowRightIcon width={16} height={16} /></span>
+                  </div>
+                </button>
+              );
+            })}
+          </section>
+        )}
+      </main>
+
+      {isModalOpen && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setIsModalOpen(false)}>
+          <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="farm-modal-title">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">Nova propriedade</p>
+                <h2 id="farm-modal-title">Cadastrar fazenda</h2>
+              </div>
+              <button className="icon-button" onClick={() => setIsModalOpen(false)} aria-label="Fechar">
+                <CloseIcon width={19} height={19} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateFarm} className="space-y-4 p-6 sm:p-7">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="field-group sm:col-span-2">
+                  <label htmlFor="farm-name">Nome da fazenda</label>
+                  <input id="farm-name" name="name" value={formData.name} onChange={handleChange} placeholder="Ex.: Fazenda Santa Clara" required autoFocus />
+                </div>
+                <div className="field-group sm:col-span-2">
+                  <label htmlFor="owner-name">Nome do proprietário</label>
+                  <input id="owner-name" name="owner_name" value={formData.owner_name} onChange={handleChange} placeholder="Ex.: Carlos Silva" required />
+                </div>
+                <div className="field-group sm:col-span-2">
+                  <label htmlFor="address">Endereço <span>opcional</span></label>
+                  <textarea id="address" name="address" value={formData.address} onChange={handleChange} placeholder="Rodovia, município e estado" rows={2} />
+                </div>
+                <div className="field-group">
+                  <label htmlFor="contact-phone">Telefone <span>opcional</span></label>
+                  <input id="contact-phone" name="contact_phone" value={formData.contact_phone} onChange={handleChange} placeholder="(00) 00000-0000" />
+                </div>
+                <div className="field-group">
+                  <label htmlFor="contact-email">E-mail <span>opcional</span></label>
+                  <input id="contact-email" type="email" name="contact_email" value={formData.contact_email} onChange={handleChange} placeholder="contato@fazenda.com" />
                 </div>
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* Modal de Cadastro de Fazenda Completo */}
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg my-8">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Cadastrar Nova Fazenda</h2>
-              
-              <form onSubmit={handleCreateFarm} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome da Fazenda *</label>
-                  <input 
-                    type="text" 
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    placeholder="Ex: Fazenda Santa Clara"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  />
-                </div>
+              {error && <div className="form-error" role="alert">{error}</div>}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Proprietário *</label>
-                  <input 
-                    type="text" 
-                    name="owner_name"
-                    value={formData.owner_name}
-                    onChange={handleChange}
-                    placeholder="Ex: Carlos Silva"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
-                  <textarea 
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    placeholder="Ex: Rodovia BR-101, km 20"
-                    rows={2}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Telefone de Contato</label>
-                    <input 
-                      type="text" 
-                      name="contact_phone"
-                      value={formData.contact_phone}
-                      onChange={handleChange}
-                      placeholder="(00) 00000-0000"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">E-mail de Contato</label>
-                    <input 
-                      type="email" 
-                      name="contact_email"
-                      value={formData.contact_email}
-                      onChange={handleChange}
-                      placeholder="contato@fazenda.com"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-
-                <div className="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold shadow transition"
-                  >
-                    Salvar Fazenda
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-      </div>
-    </div>
+              <div className="modal-actions">
+                <button type="button" className="ghost-button" onClick={() => setIsModalOpen(false)}>Cancelar</button>
+                <button type="submit" className="primary-button" disabled={isSaving}>
+                  {isSaving ? <><span className="spinner" /> Salvando...</> : 'Salvar fazenda'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+    </AppShell>
   );
 }

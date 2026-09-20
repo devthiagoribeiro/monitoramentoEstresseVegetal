@@ -1,132 +1,261 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import axios from 'axios';
-import { useParams, useNavigate } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useNavigate, useParams } from 'react-router-dom';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import AppShell from '../components/AppShell';
+import {
+  ActivityIcon,
+  BatteryIcon,
+  ChevronLeftIcon,
+  CloseIcon,
+  DropletsIcon,
+  PlusIcon,
+  RadioIcon,
+  ThermometerIcon,
+} from '../components/Icons';
+import { api } from '../lib/api';
 
-axios.defaults.withCredentials = true;
-axios.defaults.baseURL = 'http://127.0.0.1:8000';
+type Farm = { id: number; name: string; owner_name: string; address?: string | null };
+type Sensor = {
+  id: number;
+  farm: number;
+  mac_address: string;
+  description?: string | null;
+  is_active: boolean;
+};
+type Reading = {
+  id: number;
+  sensor: number;
+  farm: number;
+  timestamp: string;
+  dpv_kpa: number;
+  humidity: number;
+  temperature: number;
+  battery: number;
+  timeLabel?: string;
+};
 
-export default function FarmDashboard() {
-  const { farmId } = useParams(); // Pega o ID da URL
-  const navigate = useNavigate();
-  
-  const [sensors, setSensors] = useState<any[]>([]);
-  const [selectedSensorId, setSelectedSensorId] = useState<string>('');
-  const [readings, setReadings] = useState<any[]>([]);
+type ChartCardProps = {
+  title: string;
+  description: string;
+  dataKey: keyof Reading;
+  color: string;
+  unit: string;
+  icon: ReactNode;
+  readings: Reading[];
+};
 
-  useEffect(() => {
-    // Busca os sensores que pertencem a esta fazenda
-    const fetchSensors = async () => {
-      try {
-        const res = await axios.get('/api/devices/sensors/');
-        // Filtra no frontend (idealmente faríamos na API futuramente)
-        const farmSensors = res.data.filter((s: any) => s.farm.toString() === farmId);
-        setSensors(farmSensors);
-        
-        if (farmSensors.length > 0) {
-          setSelectedSensorId(farmSensors[0].id.toString());
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchSensors();
-  }, [farmId]);
-
-  useEffect(() => {
-    if (!selectedSensorId) return;
-
-    const fetchReadings = async () => {
-      try {
-        // Buscamos todas as leituras da API
-        const res = await axios.get('/api/devices/readings/');
-        
-        // Filtramos pelo sensor selecionado e garantimos que o carimbo da fazenda confere
-        const sensorReadings = res.data
-          .filter((r: any) => r.sensor.toString() === selectedSensorId && r.farm?.toString() === farmId)
-          .map((r: any) => {
-            const date = new Date(r.timestamp);
-            return {
-              ...r,
-              horaFormatada: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            };
-          })
-          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-        setReadings(sensorReadings);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchReadings();
-  }, [selectedSensorId, farmId]);
-  // Função auxiliar para renderizar cada um dos 4 gráficos padronizados
-  const renderChart = (title: string, dataKey: string, color: string, unit: string) => (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-      <h3 className="text-lg font-bold text-gray-700 mb-4">{title}</h3>
+function ChartCard({ title, description, dataKey, color, unit, icon, readings }: ChartCardProps) {
+  return (
+    <article className="chart-card">
+      <div className="chart-heading">
+        <div className="chart-icon" style={{ color }}>{icon}</div>
+        <div><h3>{title}</h3><p>{description}</p></div>
+      </div>
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={readings} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-            <XAxis dataKey="horaFormatada" stroke="#6b7280" fontSize={12} />
-            <YAxis stroke="#6b7280" fontSize={12} tickFormatter={(val) => `${val}${unit}`} />
-            <Tooltip 
-              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-              labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+          <LineChart data={readings} margin={{ top: 18, right: 10, bottom: 0, left: -12 }}>
+            <CartesianGrid stroke="#ecebe5" vertical={false} strokeDasharray="3 5" />
+            <XAxis dataKey="timeLabel" stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} dy={10} minTickGap={24} />
+            <YAxis stroke="#a8a29e" fontSize={11} axisLine={false} tickLine={false} tickFormatter={(value) => `${value}${unit}`} width={55} />
+            <Tooltip
+              cursor={{ stroke: '#d6d3d1', strokeDasharray: '4 4' }}
+              contentStyle={{ borderRadius: 12, border: '1px solid #e7e5e4', boxShadow: '0 12px 30px rgb(28 25 23 / 0.08)', fontSize: 12 }}
+              formatter={(value) => [`${value}${unit}`, title]}
+              labelStyle={{ color: '#78716c', marginBottom: 4 }}
             />
-            <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={3} dot={{ r: 4, fill: color }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 2, fill: '#fff' }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </article>
+  );
+}
+
+export default function FarmDashboard() {
+  const { farmId } = useParams();
+  const navigate = useNavigate();
+  const [farm, setFarm] = useState<Farm | null>(null);
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [selectedSensorId, setSelectedSensorId] = useState('');
+  const [readings, setReadings] = useState<Reading[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSensorModalOpen, setIsSensorModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [sensorError, setSensorError] = useState('');
+  const [sensorForm, setSensorForm] = useState({ mac_address: '', description: '' });
+
+  const fetchSensors = useCallback(async () => {
+    const response = await api.get('/api/devices/sensors/');
+    const farmSensors = response.data.filter((sensor: Sensor) => sensor.farm.toString() === farmId);
+    setSensors(farmSensors);
+    setSelectedSensorId((current) => {
+      const selectionStillExists = farmSensors.some((sensor: Sensor) => sensor.id.toString() === current);
+      return selectionStillExists ? current : farmSensors[0]?.id.toString() || '';
+    });
+    if (farmSensors.length === 0) setReadings([]);
+    return farmSensors;
+  }, [farmId]);
+
+  useEffect(() => {
+    const fetchOverview = async () => {
+      try {
+        const [farmResponse] = await Promise.all([
+          api.get(`/api/devices/farms/${farmId}/`),
+          fetchSensors(),
+        ]);
+        setFarm(farmResponse.data);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    void fetchOverview();
+  }, [farmId, fetchSensors]);
+
+  useEffect(() => {
+    if (!selectedSensorId) {
+      return;
+    }
+    const fetchReadings = async () => {
+      const response = await api.get('/api/devices/readings/');
+      const sensorReadings = response.data
+        .filter((reading: Reading) => reading.sensor.toString() === selectedSensorId && reading.farm.toString() === farmId)
+        .map((reading: Reading) => ({
+          ...reading,
+          timeLabel: new Date(reading.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        }))
+        .sort((a: Reading, b: Reading) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      setReadings(sensorReadings);
+    };
+    void fetchReadings();
+  }, [selectedSensorId, farmId]);
+
+  useEffect(() => {
+    if (!isSensorModalOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSensorModalOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [isSensorModalOpen]);
+
+  const latestReading = readings.at(-1);
+  const selectedSensor = useMemo(
+    () => sensors.find((sensor) => sensor.id.toString() === selectedSensorId),
+    [sensors, selectedSensorId],
   );
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
-        <button onClick={() => navigate('/dashboard')} className="font-bold hover:underline">
-          &larr; Voltar às Fazendas
-        </button>
-        <button className="bg-blue-500 hover:bg-blue-700 px-4 py-2 rounded text-sm font-semibold transition">
-          + Adicionar Sensor
-        </button>
-      </nav>
+  const createSensor = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSensorError('');
+    setIsSaving(true);
+    try {
+      const response = await api.post('/api/devices/sensors/', {
+        mac_address: sensorForm.mac_address,
+        description: sensorForm.description || null,
+        farm: Number(farmId),
+      });
+      await fetchSensors();
+      setSelectedSensorId(response.data.id.toString());
+      setSensorForm({ mac_address: '', description: '' });
+      setIsSensorModalOpen(false);
+    } catch (error: unknown) {
+      const detail = axios.isAxiosError(error) ? error.response?.data?.detail : null;
+      setSensorError(typeof detail === 'string' ? detail : 'Verifique o identificador. O sensor precisa estar autorizado e disponível.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-      <main className="max-w-7xl mx-auto p-6">
-        <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold text-gray-800">Monitoramento da Fazenda</h1>
-          
-          {/* Filtro de Sensores */}
-          <div className="flex items-center gap-3">
-            <label className="font-semibold text-gray-600">Visualizando Sensor:</label>
-            <select 
-              className="bg-white border border-gray-300 text-gray-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 shadow-sm"
-              value={selectedSensorId}
-              onChange={(e) => setSelectedSensorId(e.target.value)}
-            >
-              {sensors.length === 0 && <option value="">Nenhum sensor encontrado</option>}
-              {sensors.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.description || s.mac_address || `Sensor #${s.id}`}
-                </option>
-              ))}
-            </select>
+  const metrics = [
+    { label: 'DPV', value: latestReading ? latestReading.dpv_kpa.toFixed(2) : '—', unit: 'kPa', icon: <ActivityIcon />, color: '#b45309', note: 'Estresse atmosférico' },
+    { label: 'Umidade', value: latestReading ? latestReading.humidity.toFixed(0) : '—', unit: '%', icon: <DropletsIcon />, color: '#0369a1', note: 'Umidade relativa' },
+    { label: 'Temperatura', value: latestReading ? latestReading.temperature.toFixed(1) : '—', unit: '°C', icon: <ThermometerIcon />, color: '#c2410c', note: 'Microclima atual' },
+    { label: 'Bateria', value: latestReading ? latestReading.battery.toFixed(0) : '—', unit: '%', icon: <BatteryIcon />, color: '#15803d', note: 'Carga do sensor' },
+  ];
+
+  return (
+    <AppShell wide>
+      <main className="app-container max-w-[1440px] py-7 sm:py-10">
+        <button className="back-button" onClick={() => navigate('/dashboard')}><ChevronLeftIcon width={17} height={17} /> Fazendas</button>
+
+        <section className="dashboard-heading">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1>{isLoading ? 'Carregando...' : farm?.name || 'Monitoramento'}</h1>
+              <span className="online-pill"><span className="status-dot" /> Online</span>
+            </div>
+            <p>{farm?.address || 'Dados ambientais e operacionais da propriedade em tempo real.'}</p>
           </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="sensor-select-label">
+              <span>Sensor</span>
+              <select value={selectedSensorId} onChange={(event) => setSelectedSensorId(event.target.value)}>
+                {sensors.length === 0 && <option value="">Nenhum sensor conectado</option>}
+                {sensors.map((sensor) => <option key={sensor.id} value={sensor.id}>{sensor.description || sensor.mac_address}</option>)}
+              </select>
+            </label>
+            <button className="primary-button" onClick={() => setIsSensorModalOpen(true)}><PlusIcon width={18} height={18} /> Adicionar sensor</button>
+          </div>
+        </section>
+
+        <section className="metrics-grid" aria-label="Últimas medições">
+          {metrics.map((metric) => (
+            <article className="metric-card" key={metric.label}>
+              <div className="metric-icon" style={{ color: metric.color }}>{metric.icon}</div>
+              <div><p>{metric.label}</p><strong>{metric.value}<small>{metric.unit}</small></strong><span>{metric.note}</span></div>
+            </article>
+          ))}
+        </section>
+
+        <div className="section-title-row">
+          <div><h2>Histórico ambiental</h2><p>{selectedSensor ? `Leituras de ${selectedSensor.description || selectedSensor.mac_address}` : 'Conecte um sensor para começar a receber dados.'}</p></div>
+          {latestReading && <span>Última atualização: {new Date(latestReading.timestamp).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>}
         </div>
 
         {readings.length === 0 ? (
-          <div className="bg-white p-10 text-center rounded-xl shadow-sm border border-gray-200">
-            <p className="text-gray-500">Nenhuma leitura encontrada para este sensor no momento.</p>
-          </div>
+          <section className="empty-state compact">
+            <div className="empty-icon"><RadioIcon width={24} height={24} /></div>
+            <h2>{sensors.length === 0 ? 'Nenhum sensor conectado' : 'Aguardando primeiras leituras'}</h2>
+            <p>{sensors.length === 0 ? 'Adicione um dispositivo autorizado para iniciar o monitoramento desta fazenda.' : 'O sensor está conectado, mas ainda não enviou dados ambientais.'}</p>
+            {sensors.length === 0 && <button className="secondary-button" onClick={() => setIsSensorModalOpen(true)}><PlusIcon width={17} height={17} /> Adicionar sensor</button>}
+          </section>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {renderChart("Déficit de Pressão de Vapor (DPV)", "dpv_kpa", "#ef4444", "kPa")}
-            {renderChart("Umidade do Ar", "humidity", "#3b82f6", "%")}
-            {renderChart("Temperatura", "temperature", "#f97316", "°C")}
-            {renderChart("Nível de Bateria do Sensor", "battery", "#22c55e", "%")}
-          </div>
+          <section className="charts-grid">
+            <ChartCard title="Déficit de pressão de vapor" description="Relação entre temperatura e umidade" dataKey="dpv_kpa" color="#b45309" unit=" kPa" icon={<ActivityIcon />} readings={readings} />
+            <ChartCard title="Umidade relativa" description="Disponibilidade de vapor no ar" dataKey="humidity" color="#0369a1" unit="%" icon={<DropletsIcon />} readings={readings} />
+            <ChartCard title="Temperatura" description="Condição térmica no ponto de coleta" dataKey="temperature" color="#c2410c" unit="°C" icon={<ThermometerIcon />} readings={readings} />
+            <ChartCard title="Bateria do dispositivo" description="Autonomia disponível em campo" dataKey="battery" color="#15803d" unit="%" icon={<BatteryIcon />} readings={readings} />
+          </section>
         )}
       </main>
-    </div>
+
+      {isSensorModalOpen && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setIsSensorModalOpen(false)}>
+          <section className="modal-panel max-w-[500px]" role="dialog" aria-modal="true" aria-labelledby="sensor-modal-title">
+            <div className="modal-header">
+              <div><p className="eyebrow">Dispositivo IoT</p><h2 id="sensor-modal-title">Conectar sensor</h2></div>
+              <button className="icon-button" onClick={() => setIsSensorModalOpen(false)} aria-label="Fechar"><CloseIcon width={19} height={19} /></button>
+            </div>
+            <form onSubmit={createSensor} className="space-y-4 p-6 sm:p-7">
+              <div className="sensor-hint"><RadioIcon width={20} height={20} /><p><strong>Use um dispositivo autorizado</strong><span>Informe o MAC/ID presente na etiqueta do sensor.</span></p></div>
+              <div className="field-group">
+                <label htmlFor="mac-address">MAC ou ID do sensor</label>
+                <input id="mac-address" value={sensorForm.mac_address} onChange={(event) => setSensorForm((current) => ({ ...current, mac_address: event.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" required autoFocus />
+              </div>
+              <div className="field-group">
+                <label htmlFor="sensor-description">Identificação no campo <span>opcional</span></label>
+                <input id="sensor-description" value={sensorForm.description} onChange={(event) => setSensorForm((current) => ({ ...current, description: event.target.value }))} placeholder="Ex.: Talhão Norte · Soja" />
+              </div>
+              {sensorError && <div className="form-error" role="alert">{sensorError}</div>}
+              <div className="modal-actions">
+                <button type="button" className="ghost-button" onClick={() => setIsSensorModalOpen(false)}>Cancelar</button>
+                <button type="submit" className="primary-button" disabled={isSaving}>{isSaving ? <><span className="spinner" /> Conectando...</> : 'Conectar sensor'}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+    </AppShell>
   );
 }
